@@ -43,18 +43,31 @@ create or replace view `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.f
 select *, sales_qty*Sell_Price as sales
 from (
 select 
-Article, Article_Description, UoM, FiscalWeekYear, Segment, Segment_Description, Subcategory, Subcategory_Description, Category, Category_Description, Department, Department_Description, Categorymanager_Position, Categorymanager_Userid, Categorymanager_Code, Categorymanager_Name, Merchandisemanager_Position, Merchandisemanager_Userid, Merchandisemanager_Code, Merchandisemanager_Name, Generalmanager_Position, Generalmanager_Userid, Generalmanager_Code, Generalmanager_Name, National_BuyDept,
+a.Sales_District, a.Article, a.Article_Description, a.UoM, a.FiscalWeekYear, a.Segment, a.Segment_Description, a.Subcategory, a.Subcategory_Description, a.Category, a.Category_Description, a.Department, a.Department_Description, a.Categorymanager_Position, a.Categorymanager_Userid, a.Categorymanager_Code, a.Categorymanager_Name, a.Merchandisemanager_Position, a.Merchandisemanager_Userid, a.Merchandisemanager_Code, a.Merchandisemanager_Name, a.Generalmanager_Position, a.Generalmanager_Userid, a.Generalmanager_Code, a.Generalmanager_Name, a.National_BuyDept,
 
-(case when avg(Sell_Price) = 0 then NULL else avg(Sell_Price)/10*1000*(1+rand()*0.1-0.05) end) as sales_qty,
-(case when avg(Offer_Price) = 0 then NULL else avg(Offer_Price)/10*1000*(1+rand()*0.1-0.05) end) as promo_qty,
-avg(Sell_Price) as Sell_Price,
-avg(Offer_Price) as Offer_Price,
-avg( (case when Cost_Price is null or Cost_Price = 0 then Sell_Price*0.75 else Cost_Price end )) as Cost_Price
+#1000 as sales_qty,
+(case 
+when avg(case when b.var = 'Sell_Price' then b.val else null end) = 0 then NULL 
+else avg(case when b.var = 'Sell_Price' then b.val else null end)/10*1000*(1+rand()*0.1-0.05) end) as sales_qty,
+
+#0 as promo_qty,
+(case 
+when avg(case when b.var = 'Offer_Price' then b.val else null end) = 0 then NULL 
+else avg(case when b.var = 'Offer_Price' then b.val else null end)/10*1000*(1+rand()*0.1-0.05) end) as promo_qty,
+
+avg((case when b.var = 'Sell_Price' then b.val else null end)) as Sell_Price,
+avg((case when b.var = 'Offer_Price' then b.val else null end)) as Offer_Price,
+
+avg(a.Cost_Price) as Cost_Price
 
 from 
-`gcp-wow-finance-de-data-prod.fin_sell_price.fin_sell_price_by_day_v`
+`gcp-wow-finance-de-data-prod.fin_sell_price.fin_sell_price_by_day_v` a
+left join 
+`gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.PricingTable` b
+on (a.Article=b.Article) and (a.Article_Description=b.Article_Description) and (a.UoM=b.UoM) and (a.Sales_District=b.Sales_District) and (a.FiscalWeekYear=b.FiscalWeekYear)
+
 group by 
-Article, Article_Description, UoM, FiscalWeekYear, Segment, Segment_Description, Subcategory, Subcategory_Description, Category, Category_Description, Department, Department_Description, Categorymanager_Position, Categorymanager_Userid, Categorymanager_Code, Categorymanager_Name, Merchandisemanager_Position, Merchandisemanager_Userid, Merchandisemanager_Code, Merchandisemanager_Name, Generalmanager_Position, Generalmanager_Userid, Generalmanager_Code, Generalmanager_Name, National_BuyDept
+a.Sales_District, a.Article, a.Article_Description, a.UoM, a.FiscalWeekYear, a.Segment, a.Segment_Description, a.Subcategory, a.Subcategory_Description, a.Category, a.Category_Description, a.Department, a.Department_Description, a.Categorymanager_Position, a.Categorymanager_Userid, a.Categorymanager_Code, a.Categorymanager_Name, a.Merchandisemanager_Position, a.Merchandisemanager_Userid, a.Merchandisemanager_Code, a.Merchandisemanager_Name, a.Generalmanager_Position, a.Generalmanager_Userid, a.Generalmanager_Code, a.Generalmanager_Name, a.National_BuyDept
 )
 );
  
@@ -223,14 +236,14 @@ ifnull(a.cost_change,0) as cost_change
 FROM `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Changes_Detail` a
 right join
 `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.all_comb` b
-on (a.scenario_name=b.scenario_name) and (a.scenario_description=b.scenario_description) and (a.Article=b.Article) and (a.Article_Description=b.Article_Description) and (a.UoM=b.UoM) and (a.FiscalWeekYear=b.FiscalWeekYear) and (a.Segment=b.Segment) and (a.Segment_Description=b.Segment_Description) and (a.Subcategory=b.Subcategory) and (a.Subcategory_Description=b.Subcategory_Description) and (a.Category=b.Category) and (a.Category_Description=b.Category_Description) and (a.Department=b.Department) and (a.Department_Description=b.Department_Description) and (a.Categorymanager_Position=b.Categorymanager_Position) and (a.Categorymanager_Userid=b.Categorymanager_Userid) and (a.Categorymanager_Code=b.Categorymanager_Code) and (a.Categorymanager_Name=b.Categorymanager_Name) and (a.Merchandisemanager_Position=b.Merchandisemanager_Position) and (a.Merchandisemanager_Userid=b.Merchandisemanager_Userid) and (a.Merchandisemanager_Code=b.Merchandisemanager_Code) and (a.Merchandisemanager_Name=b.Merchandisemanager_Name) and (a.Generalmanager_Position=b.Generalmanager_Position) and (a.Generalmanager_Userid=b.Generalmanager_Userid) and (a.Generalmanager_Code=b.Generalmanager_Code) and (a.Generalmanager_Name=b.Generalmanager_Name) and (a.National_BuyDept=b.National_BuyDept)
+on (a.scenario_name=b.scenario_name) and (a.scenario_description=b.scenario_description) and (a.Sales_District=b.Sales_District) and (a.Article=b.Article) and (a.Article_Description=b.Article_Description) and (a.UoM=b.UoM) and (a.FiscalWeekYear=b.FiscalWeekYear) and (a.Segment=b.Segment) and (a.Segment_Description=b.Segment_Description) and (a.Subcategory=b.Subcategory) and (a.Subcategory_Description=b.Subcategory_Description) and (a.Category=b.Category) and (a.Category_Description=b.Category_Description) and (a.Department=b.Department) and (a.Department_Description=b.Department_Description) and (a.Categorymanager_Position=b.Categorymanager_Position) and (a.Categorymanager_Userid=b.Categorymanager_Userid) and (a.Categorymanager_Code=b.Categorymanager_Code) and (a.Categorymanager_Name=b.Categorymanager_Name) and (a.Merchandisemanager_Position=b.Merchandisemanager_Position) and (a.Merchandisemanager_Userid=b.Merchandisemanager_Userid) and (a.Merchandisemanager_Code=b.Merchandisemanager_Code) and (a.Merchandisemanager_Name=b.Merchandisemanager_Name) and (a.Generalmanager_Position=b.Generalmanager_Position) and (a.Generalmanager_Userid=b.Generalmanager_Userid) and (a.Generalmanager_Code=b.Generalmanager_Code) and (a.Generalmanager_Name=b.Generalmanager_Name) and (a.National_BuyDept=b.National_BuyDept)
 
 );
  
 
 create or replace view `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Changes_summary_0` as (
 
-with dat as (SELECT scenario_name, scenario_description, Article, Article_Description, UoM, FiscalWeekYear, Segment, Segment_Description, Subcategory, Subcategory_Description, Category, Category_Description, Department, Department_Description, Categorymanager_Position, Categorymanager_Userid, Categorymanager_Code, Categorymanager_Name, Merchandisemanager_Position, Merchandisemanager_Userid, Merchandisemanager_Code, Merchandisemanager_Name, Generalmanager_Position, Generalmanager_Userid, Generalmanager_Code, Generalmanager_Name, National_BuyDept,
+with dat as (SELECT scenario_name, scenario_description, Sales_District, Article, Article_Description, UoM, FiscalWeekYear, Segment, Segment_Description, Subcategory, Subcategory_Description, Category, Category_Description, Department, Department_Description, Categorymanager_Position, Categorymanager_Userid, Categorymanager_Code, Categorymanager_Name, Merchandisemanager_Position, Merchandisemanager_Userid, Merchandisemanager_Code, Merchandisemanager_Name, Generalmanager_Position, Generalmanager_Userid, Generalmanager_Code, Generalmanager_Name, National_BuyDept,
 
 sum(ifnull(price_change,0)) as price_change, # should we have an offer and sell price option here?
 sum(ifnull(volume_change,0)) as volume_change,
@@ -260,7 +273,7 @@ avg(promo_qty)*(1+0)
 ,0) as promo_qty_after, # if gsheet has an offer price adjustment then that'd go in here 
 
 FROM `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.all_comb_incl_changes` 
-group by scenario_name, scenario_description, Article, Article_Description, UoM, FiscalWeekYear, Segment, Segment_Description, Subcategory, Subcategory_Description, Category, Category_Description, Department, Department_Description, Categorymanager_Position, Categorymanager_Userid, Categorymanager_Code, Categorymanager_Name, Merchandisemanager_Position, Merchandisemanager_Userid, Merchandisemanager_Code, Merchandisemanager_Name, Generalmanager_Position, Generalmanager_Userid, Generalmanager_Code, Generalmanager_Name, National_BuyDept
+group by scenario_name, scenario_description, Sales_District, Article, Article_Description, UoM, FiscalWeekYear, Segment, Segment_Description, Subcategory, Subcategory_Description, Category, Category_Description, Department, Department_Description, Categorymanager_Position, Categorymanager_Userid, Categorymanager_Code, Categorymanager_Name, Merchandisemanager_Position, Merchandisemanager_Userid, Merchandisemanager_Code, Merchandisemanager_Name, Generalmanager_Position, Generalmanager_Userid, Generalmanager_Code, Generalmanager_Name, National_BuyDept
 )
 select *, 
 sales_qty_after*Sell_Price_after as sales_after,
