@@ -1,0 +1,313 @@
+create or replace view `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.PricingTable` as (
+with dat as (
+select Article, Article_Description, UoM, Sales_District, FiscalWeekYear, 'Offer_Price' as var, Offer_Price as val, count(*) as n
+from `gcp-wow-finance-de-data-prod.fin_sell_price.fin_sell_price_by_day_v`
+group by 1,2,3,4,5,6,7
+
+union all
+
+select Article, Article_Description, UoM, Sales_District, FiscalWeekYear, 'Sell_Price' as var, Sell_Price as val, count(*) as n
+from `gcp-wow-finance-de-data-prod.fin_sell_price.fin_sell_price_by_day_v`
+group by 1,2,3,4,5,6,7
+
+union all
+
+select Article, Article_Description, UoM, Sales_District, FiscalWeekYear, 'Cost_Price' as var, Cost_Price as val, count(*) as n
+from `gcp-wow-finance-de-data-prod.fin_sell_price.fin_sell_price_by_day_v`
+group by 1,2,3,4,5,6,7
+
+),
+maxDat as (
+select Article, Article_Description, UoM, Sales_District, FiscalWeekYear, var, max(n) as max_n
+from dat
+group by 1,2,3,4,5,6
+),
+max_n_joined as (
+select a.*, b.max_n
+from dat a
+left join
+maxDat b
+on (a.Article=b.Article) and (a.Article_Description=b.Article_Description) and (a.UoM=b.UoM) and (a.Sales_District=b.Sales_District) and (a.FiscalWeekYear=b.FiscalWeekYear) and (a.var=b.var)
+--where a.n=b.max_n
+)
+select Article, Article_Description, UoM, Sales_District, FiscalWeekYear, var
+, avg(val) as val
+from max_n_joined
+where n = max_n
+group by 1,2,3,4,5,6
+order by 1,2,3,4,5,6
+);
+ 
+
+create or replace view `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.fin_sell_price_by_day_v_v` as (
+select *, sales_qty*Sell_Price as sales
+from (
+select 
+Article, Article_Description, UoM, FiscalWeekYear, Segment, Segment_Description, Subcategory, Subcategory_Description, Category, Category_Description, Department, Department_Description, Categorymanager_Position, Categorymanager_Userid, Categorymanager_Code, Categorymanager_Name, Merchandisemanager_Position, Merchandisemanager_Userid, Merchandisemanager_Code, Merchandisemanager_Name, Generalmanager_Position, Generalmanager_Userid, Generalmanager_Code, Generalmanager_Name, National_BuyDept,
+
+(case when avg(Sell_Price) = 0 then NULL else avg(Sell_Price)/10*1000*(1+rand()*0.1-0.05) end) as sales_qty,
+(case when avg(Offer_Price) = 0 then NULL else avg(Offer_Price)/10*1000*(1+rand()*0.1-0.05) end) as promo_qty,
+avg(Sell_Price) as Sell_Price,
+avg(Offer_Price) as Offer_Price,
+avg( (case when Cost_Price is null or Cost_Price = 0 then Sell_Price*0.75 else Cost_Price end )) as Cost_Price
+
+from 
+`gcp-wow-finance-de-data-prod.fin_sell_price.fin_sell_price_by_day_v`
+group by 
+Article, Article_Description, UoM, FiscalWeekYear, Segment, Segment_Description, Subcategory, Subcategory_Description, Category, Category_Description, Department, Department_Description, Categorymanager_Position, Categorymanager_Userid, Categorymanager_Code, Categorymanager_Name, Merchandisemanager_Position, Merchandisemanager_Userid, Merchandisemanager_Code, Merchandisemanager_Name, Generalmanager_Position, Generalmanager_Userid, Generalmanager_Code, Generalmanager_Name, National_BuyDept
+)
+);
+ 
+
+create or replace view `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Latest_Upload_summary` as (
+
+with articleChanges as (
+SELECT 'article' as change_category, article_number as change_category_value,
+scenario_name,	scenario_description,	
+week,
+(case when lower(metric) = 'price' then sum_value else 0 end) as price_change,
+(case when lower(metric) = 'volume' then sum_value else 0 end) as volume_change,
+(case when lower(metric) = 'costs' then sum_value else 0 end) as cost_change
+
+FROM `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Latest_Upload`
+where article_number != '*'
+),
+segmentChanges as (
+SELECT 'segment' as change_category, segment as change_category_value,
+scenario_name,	scenario_description,	
+week,
+(case when lower(metric) = 'price' then sum_value else 0 end) as price_change,
+(case when lower(metric) = 'volume' then sum_value else 0 end) as volume_change,
+(case when lower(metric) = 'costs' then sum_value else 0 end) as cost_change
+
+FROM `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Latest_Upload`
+where article_number = '*' and
+segment != '*'
+),
+subcatChanges as (
+SELECT 'subcat' as change_category, sub_category as change_category_value,
+scenario_name,	scenario_description,	
+week,
+(case when lower(metric) = 'price' then sum_value else 0 end) as price_change,
+(case when lower(metric) = 'volume' then sum_value else 0 end) as volume_change,
+(case when lower(metric) = 'costs' then sum_value else 0 end) as cost_change
+
+FROM `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Latest_Upload`
+where article_number = '*' and
+segment = '*' and
+sub_category != '*'
+),
+problemChanges as (
+SELECT 'problem' as change_category, '?' as change_category_value,
+scenario_name,	scenario_description,	
+week,
+(case when lower(metric) = 'price' then sum_value else 0 end) as price_change,
+(case when lower(metric) = 'volume' then sum_value else 0 end) as volume_change,
+(case when lower(metric) = 'costs' then sum_value else 0 end) as cost_change
+
+FROM 
+`gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Latest_Upload`
+where article_number = '*' and
+segment = '*' and
+sub_category = '*'
+),
+allUnioned as (
+select *, week+202200 as fiscal_week
+from articleChanges
+union all
+(select *, week+202200 from segmentChanges)
+union all
+(select *, week+202200 from subcatChanges)
+union all
+(select *, week+202200 from problemChanges)
+),
+allUnionedSummary as (
+select change_category,	change_category_value,	scenario_name,	scenario_description,	week,	fiscal_week,
+sum(price_change) as price_change,	sum(volume_change) as volume_change, sum(cost_change) as cost_change
+from allUnioned
+group by 1,2,3,4,5,6
+)
+select *
+from allUnionedSummary
+
+);
+ 
+
+create or replace view `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Changes_Detail` as (
+
+SELECT distinct * except (subcat_join, segment_join)
+FROM 
+(
+(
+  select a.*, b.*
+  from 
+  (select * 
+  from `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Latest_Upload_summary`
+  where change_category = 'subcat'
+  ) a
+  right join
+  (
+  select *, 
+  concat(substr(Subcategory, 3, 999),'-',Subcategory_Description) as subcat_join,
+  concat(substr(Segment, 3, 999),'-',Segment_Description) as segment_join
+  from `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.fin_sell_price_by_day_v_v`
+  ) b
+  on (a.change_category_value=b.subcat_join)  and
+  (cast(a.fiscal_week as string) = b.FiscalWeekYear )
+) 
+
+union all
+(
+  select a.*, b.*
+  from 
+  (select * 
+  from `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Latest_Upload_summary`
+  where change_category = 'segment'
+  ) a
+  right join
+  (
+  select *, 
+  concat(substr(Subcategory, 3, 999),'-',Subcategory_Description) as subcat_join,
+  concat(substr(Segment, 3, 999),'-',Segment_Description) as segment_join
+  from `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.fin_sell_price_by_day_v_v`
+  ) b
+  on (a.change_category_value=b.segment_join)  and
+  (cast(a.fiscal_week as string) = b.FiscalWeekYear )
+)
+
+
+union all
+(
+  select a.*, b.*
+  from 
+  (select * 
+  from `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Latest_Upload_summary`
+  where change_category = 'article'
+  ) a
+  right join
+  (
+  select *, 
+  concat(substr(Subcategory, 3, 999),'-',Subcategory_Description) as subcat_join,
+  concat(substr(Segment, 3, 999),'-',Segment_Description) as segment_join
+  from `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.fin_sell_price_by_day_v_v`
+  ) b
+  on (a.change_category_value=b.Article)  and
+  (cast(a.fiscal_week as string) = b.FiscalWeekYear )
+)
+)
+
+);
+ 
+
+create or replace view `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.all_comb` as (
+
+select a.*, b.*
+from (
+SELECT distinct scenario_name, scenario_description
+FROM `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Changes_Detail` 
+) a,
+(
+select distinct *
+FROM `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.fin_sell_price_by_day_v_v` 
+) b
+
+);
+ 
+
+create or replace view `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.all_comb_incl_changes` as (
+
+SELECT b.*, 
+ifnull(a.price_change,0) as price_change,
+ifnull(a.volume_change,0) as volume_change,
+ifnull(a.cost_change,0) as cost_change
+FROM `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Changes_Detail` a
+right join
+`gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.all_comb` b
+on (a.scenario_name=b.scenario_name) and (a.scenario_description=b.scenario_description) and (a.Article=b.Article) and (a.Article_Description=b.Article_Description) and (a.UoM=b.UoM) and (a.FiscalWeekYear=b.FiscalWeekYear) and (a.Segment=b.Segment) and (a.Segment_Description=b.Segment_Description) and (a.Subcategory=b.Subcategory) and (a.Subcategory_Description=b.Subcategory_Description) and (a.Category=b.Category) and (a.Category_Description=b.Category_Description) and (a.Department=b.Department) and (a.Department_Description=b.Department_Description) and (a.Categorymanager_Position=b.Categorymanager_Position) and (a.Categorymanager_Userid=b.Categorymanager_Userid) and (a.Categorymanager_Code=b.Categorymanager_Code) and (a.Categorymanager_Name=b.Categorymanager_Name) and (a.Merchandisemanager_Position=b.Merchandisemanager_Position) and (a.Merchandisemanager_Userid=b.Merchandisemanager_Userid) and (a.Merchandisemanager_Code=b.Merchandisemanager_Code) and (a.Merchandisemanager_Name=b.Merchandisemanager_Name) and (a.Generalmanager_Position=b.Generalmanager_Position) and (a.Generalmanager_Userid=b.Generalmanager_Userid) and (a.Generalmanager_Code=b.Generalmanager_Code) and (a.Generalmanager_Name=b.Generalmanager_Name) and (a.National_BuyDept=b.National_BuyDept)
+
+);
+ 
+
+create or replace view `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Changes_summary_0` as (
+
+with dat as (SELECT scenario_name, scenario_description, Article, Article_Description, UoM, FiscalWeekYear, Segment, Segment_Description, Subcategory, Subcategory_Description, Category, Category_Description, Department, Department_Description, Categorymanager_Position, Categorymanager_Userid, Categorymanager_Code, Categorymanager_Name, Merchandisemanager_Position, Merchandisemanager_Userid, Merchandisemanager_Code, Merchandisemanager_Name, Generalmanager_Position, Generalmanager_Userid, Generalmanager_Code, Generalmanager_Name, National_BuyDept,
+
+sum(ifnull(price_change,0)) as price_change, # should we have an offer and sell price option here?
+sum(ifnull(volume_change,0)) as volume_change,
+sum(ifnull(cost_change,0)) as cost_change,
+
+ifnull(avg(Sell_Price),0) as Sell_Price_before,
+ifnull(avg(Offer_Price),0) as Offer_Price_before,
+ifnull(avg(Cost_Price),0) as Cost_Price_before,
+ifnull(avg(sales_qty),0) as sales_qty_before,
+ifnull(avg(promo_qty),0) as promo_qty_before,
+ifnull(avg(sales),0) as sales_before, # yes avg is right here. Can have 1 to many [price, volume, cost changes] per combination.
+
+ifnull(
+avg(Sell_Price)*(1+sum(ifnull(price_change,0)))
+,0) as Sell_Price_after,
+ifnull(
+avg(Offer_Price)
+,0) as Offer_Price_after,
+ifnull(
+avg(Cost_Price)*(1+sum(ifnull(cost_change,0)))
+,0) as Cost_Price_after,
+ifnull(
+avg(sales_qty)*(1+sum(ifnull(volume_change,0)))
+,0) as sales_qty_after,
+ifnull(
+avg(promo_qty)*(1+0)
+,0) as promo_qty_after, # if gsheet has an offer price adjustment then that'd go in here 
+
+FROM `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.all_comb_incl_changes` 
+group by scenario_name, scenario_description, Article, Article_Description, UoM, FiscalWeekYear, Segment, Segment_Description, Subcategory, Subcategory_Description, Category, Category_Description, Department, Department_Description, Categorymanager_Position, Categorymanager_Userid, Categorymanager_Code, Categorymanager_Name, Merchandisemanager_Position, Merchandisemanager_Userid, Merchandisemanager_Code, Merchandisemanager_Name, Generalmanager_Position, Generalmanager_Userid, Generalmanager_Code, Generalmanager_Name, National_BuyDept
+)
+select *, 
+sales_qty_after*Sell_Price_after as sales_after,
+Sell_Price_after-Sell_Price_before as Sell_Price_diff,
+Offer_Price_after-Offer_Price_before	as Offer_Price_diff,
+Cost_Price_after-Cost_Price_before as Cost_Price_diff,
+sales_qty_after-sales_qty_before as sales_qty_diff,
+promo_qty_after-promo_qty_before as promo_qty_diff,
+(sales_qty_after*Sell_Price_after)-sales_before as sales_diff
+from dat
+
+);
+ 
+
+create or replace view `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.test_toReturnToGsheet` as (
+
+with dat as (
+SELECT concat(ifnull(scenario_name,'-1'),'-|-', ifnull(scenario_description,'Starting point')) as scenario, FiscalWeekYear, 
+sum(sales_before) as sales_before,
+sum(sales_after) as sales_after,
+sum(sales_diff) as sales_diff,
+
+sum(sales_qty_before) as sales_qty_before,
+sum(sales_qty_after) as sales_qty_after,
+sum(sales_qty_diff) as sales_qty_diff,
+
+sum(Cost_Price_before*sales_qty_before) as Cost_before,
+sum(Cost_Price_after*sales_qty_after) as Cost_after,
+sum(Cost_Price_after*sales_qty_after)-sum(Cost_Price_before*sales_qty_before) as Cost_diff
+
+FROM `gcp-wow-finance-de-lab-dev.006_greenstockForecastModel.Changes_summary_0`
+group by 1,2
+
+)
+select *,
+
+(case when sales_qty_before = 0 then null else sales_before/sales_qty_before end) as ASP_before,
+(case when sales_qty_after = 0 then null else sales_after/sales_qty_after end) as ASP_after,
+(case when sales_qty_after = 0 then null else sales_after/sales_qty_after end) - 
+(case when sales_qty_before = 0 then null else sales_before/sales_qty_before end) as ASP_diff,
+
+(case when sales_qty_before = 0 then null else Cost_before/sales_qty_before end) as ACP_before,
+(case when sales_qty_after = 0 then null else Cost_after/sales_qty_after end) as ACP_after,
+(case when sales_qty_after = 0 then null else Cost_after/sales_qty_after end) - 
+(case when sales_qty_before = 0 then null else Cost_before/sales_qty_before end) as ACP_diff
+
+from dat
+order by scenario, FiscalWeekYear
+
+);
